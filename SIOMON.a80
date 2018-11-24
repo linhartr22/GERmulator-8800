@@ -1,0 +1,201 @@
+;*****
+;* Equates
+;*
+NUL         EQU     $00 
+BEL         EQU     $07 
+BS          EQU     $08 
+HT          EQU     $09 
+LF          EQU     $0a 
+FF          EQU     $0c 
+CR          EQU     $0d 
+ESC         EQU     $1b 
+
+SIODATA     EQU     $80 
+
+SIOST       EQU     $81 
+SIOSTTXRDY  EQU     $01 
+SIOSTRXRDY  EQU     $02 
+SIOSTTXE    EQU     $04 
+
+SIOMO       EQU     $81 
+SIOMOS1     EQU     $40 
+SIOMOS15    EQU     $80 
+SIOMOS2     EQU     $c0 
+SIOMOPE     EQU     $20 
+SIOMOPEN    EQU     $10 
+SIOMOC5     EQU     $00 
+SIOMOC6     EQU     $04 
+SIOMOC7     EQU     $08 
+SIOMOC8     EQU     $0c 
+SIOMOBS     EQU     $00 
+SIOMOB1X    EQU     $01 
+SIOMOB16X   EQU     $02 
+SIOMOB64X   EQU     $03 
+SIOMOI      EQU     siomos1+siomoc8+siomob16x 
+
+SIOCMD      EQU     $81 
+SIOCMDTXEN  EQU     $01 
+SIOCMDDTR   EQU     $02 
+SIOCMDRXEN  EQU     $04 
+SIOCMDER    EQU     $10 
+SIOCMDRTS   EQU     $20 
+SIOCMDIR    EQU     $40 
+SIOCMDI     EQU     siocmddtr+siocmdrts+siocmdtxen+siocmder 
+
+;*****
+;* Init
+;*
+            .ORG    $0100 
+
+INIT:       LXI     sp,spinit ; Init SP
+
+SIOINIT:    SUB     a ; Clear SIO Init Sequence
+            OUT     siomo 
+            OUT     siomo 
+            OUT     siomo 
+            MVI     a,siocmdir ; Send SIO Command Internal Reset
+            OUT     siocmd 
+            MVI     a,siomoi ; Send SIO Mode Instruction
+            OUT     siomo 
+            MVI     a,siocmdi ; Send SIO Command Instruction
+            OUT     siocmd 
+
+MONINIT:    LXI     h,grtmsg ; Display Greet Message
+            CALL    soutstr 
+
+;*****
+;* Main
+;*
+MAIN:       LXI     h,clmsg ; Display Prompt
+            CALL    soutstr 
+            MVI     a,siocmdi+siocmdrxen ; Set SIO RX Enable
+            OUT     siocmd 
+            LXI     h,clbuf ; Get SIO Command Line Buffer Pointer
+            LXI     b,clbufe-clbuf ; Get SIO Command Line Buffer Size (Zeros B - Size in C)
+            CALL    sinstr ; Get SIO Command Line Buffer
+            MVI     a,siocmdi ; Clear SIO RX Enable
+            OUT     siocmd 
+
+            JMP     main 
+
+;*****
+;* Library
+;*
+            .ORG    $1800 
+
+;=====
+;= Serial Output Character in Acc
+;= Modifies: None
+SOUTC:      PUSH    psw ; Save Char
+            IN      SIOST ; Check if SIO Ready to Tx
+            ANI     siosttxe 
+            POP     psw ; Restore Char
+            OUT     siodata ; Output Char to SID Data Port
+SOUTCX:     RET      ; Done
+
+;=====
+;= Serial Output String at HL
+;= Modifies: AF, HL
+SOUTSTR:    MOV     a,m ; Get Char from Buffer
+            ORA     a ; Null?
+            JZ      soutstrx ; Yes, Exit
+            CALL    soutc ; No, Serial Output Char
+            INX     h ; Inc Buffer Pointer
+            JMP     soutstr ; Get Next Char
+SOUTSTRX:   RET      ; End of String
+
+;=====
+;= Serial Output Hex Byte in Acc
+;= Modifies AF
+SOUTHEXB:   PUSH    psw ; Save Byte
+            RRC      ; Get Upper Nibble
+            RRC      
+            RRC      
+            RRC      
+            ANI     0fh ; Mask off Upper Nibble
+            ADI     '0' ; Convert to ASCII
+            CPI     ':' ; Hex Adjust?
+            JC      southexb1 ; No
+            ADI     'A'-':' ; Yes
+SOUTHEXB1:  CALL    soutc ; Serial Output Char
+            POP     psw ; Restore Char
+            ANI     0fh ; Mask off Upper Nibble
+            ADI     '0' ; Convert to ASCII
+            CPI     ':' ; Hex Adjust?
+            JC      southexb2 ; No
+            ADI     'A'-':' ; Yes
+SOUTHEXB2:  JMP     soutc ; Serial Output Char
+            RET      ; Done
+
+;=====
+;= Serial Input String at HL
+;= Modifies AF, BC, DE, HL
+SINSTR:     CALL    sinc ; Get Character
+            CPI     cr ; Carriage Return?
+            JZ      sinstrx ; Yes, Exit
+            CPI     bs ; Backspace?
+            JZ      sinstrbs ; Yes, Backspace
+            CPI     ' ' ; Printable Character?
+            JC      sinstr ; No, Ignore Character
+            MOV     d,a ; No, Save Character
+            MOV     a,b ; Character Counter = Buffer Size?
+            CMP     c 
+            JZ      sinstr ; Yes, Ignore Character
+            MOV     m,d ; No, Save Character in Buffer
+            INX     h ; Inc Buffer Pointer
+            INR     b ; Inc Buffer Count
+            JMP     sinstr ; Get Next Character
+SINSTRBS:   MOV     a,b ; Count = 0?
+            ORA     a 
+            JZ      sinstr ; Yes, Ignore Backspace
+            DCX     h ; Dec Buffer Pointer
+            INR     b ; Inc Character Count
+SINSTRX:    MVI     m,nul ; Null Terminate Buffer
+
+;=====
+;= Serian Input Character to Acc
+;= Modifies AF
+SINC:       IN      siost ; Character Ready?
+            ANI     SIOSTTXRDY 
+            JNZ     sinc ; No, Keep Waiting
+            IN      siodata ; Input Character
+            ANI     $7f ; Make 7-bit ASCII
+            RET      
+
+;*****
+;* String Constants
+;*
+            .ORG    1e00H 
+
+GRTMSG:     DB      'GERmon v1.0',bel 
+            DB      '   Roger D. Linhart',bel 
+            DB      '   Nov 2018',bel,cr,lf,lf,nul 
+CLMSG:      DB      cr,lf,'? ',nul 
+;HLPMSG:
+;            DB      'd bbbb eeee <enter>  Display Memory',cr,lf
+;            DB      'e aaaa <enter>       Edit Memory',cr,lf
+;            DB      'g aaaa <enter>       Execute (GoTo) Memory',cr,lf,nul
+
+;*****
+;* RAM
+;*
+            .ORG    8000h 
+
+CLBUF:      DS      12 ; Command Line Buffer (String - Null Delimited)
+CLBUFE:     DS      1 
+
+;*****
+;* STACK
+;*
+            .ORG    0fe00h 
+
+            DS      100h 
+SPINIT      EQU     $ 
+
+
+
+
+
+
+
+
