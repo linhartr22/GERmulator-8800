@@ -8,6 +8,7 @@ Serial Terminal supports:
   CR = Carriage Return. Moves cursor to beginning of line.
   LF = Line Feed. Moves cursor down one line.
   VT = Vertical Tab. Clear Screen.
+
 I also found a couple of errors in the microcode.
 
 Version 15
