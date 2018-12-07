@@ -87,8 +87,9 @@ MAIN:       LXI     h,clmsg ; Display Prompt
 ;= Serial Output Character in Acc
 ;= Modifies: None
 SOUTC:      PUSH    psw ; Save Char
-            IN      SIOST ; Check if SIO Ready to Tx
+            IN      siost ; SIO Ready to Tx?
             ANI     siosttxe 
+            JZ      soutc ; No, Keep Waiting
             POP     psw ; Restore Char
             OUT     siodata ; Output Char to SID Data Port
 SOUTCX:     RET      ; Done
@@ -131,33 +132,39 @@ SOUTHEXB2:  JMP     soutc ; Serial Output Char
 ;= Serial Input String at HL
 ;= Modifies AF, BC, DE, HL
 SINSTR:     CALL    sinc ; Get Character
+            MOV     d,a ; Save Character
             CPI     cr ; Carriage Return?
             JZ      sinstrx ; Yes, Exit
             CPI     bs ; Backspace?
             JZ      sinstrbs ; Yes, Backspace
             CPI     ' ' ; Printable Character?
             JC      sinstr ; No, Ignore Character
-            MOV     d,a ; No, Save Character
             MOV     a,b ; Character Counter = Buffer Size?
             CMP     c 
             JZ      sinstr ; Yes, Ignore Character
-            MOV     m,d ; No, Save Character in Buffer
+            MOV     a,d ; Restore Character
+            MOV     m,a ; No, Save Character in Buffer
             INX     h ; Inc Buffer Pointer
             INR     b ; Inc Buffer Count
+SINSTRECHO: CALL    soutc ; Echo Character
             JMP     sinstr ; Get Next Character
 SINSTRBS:   MOV     a,b ; Count = 0?
             ORA     a 
             JZ      sinstr ; Yes, Ignore Backspace
             DCX     h ; Dec Buffer Pointer
-            INR     b ; Inc Character Count
+            DCR     b ; Dec Character Count
+            MVI     m,' ' ; Erase Character in Buffer
+            MOV     a,d ; Restore Character
+            JMP     sinstrecho ; Echo Character
 SINSTRX:    MVI     m,nul ; Null Terminate Buffer
+            RET      
 
 ;=====
 ;= Serian Input Character to Acc
 ;= Modifies AF
 SINC:       IN      siost ; Character Ready?
-            ANI     SIOSTTXRDY 
-            JNZ     sinc ; No, Keep Waiting
+            ANI     siostrxrdy 
+            JZ      sinc ; No, Keep Waiting
             IN      siodata ; Input Character
             ANI     $7f ; Make 7-bit ASCII
             RET      
@@ -167,14 +174,14 @@ SINC:       IN      siost ; Character Ready?
 ;*
             .ORG    1e00H 
 
-GRTMSG:     DB      'GERmon v1.0',bel 
+GRTMSG:     DB      cr,lf,lf,'GERmon v1.0',bel 
             DB      '   Roger D. Linhart',bel 
             DB      '   Nov 2018',bel,cr,lf,lf,nul 
 CLMSG:      DB      cr,lf,'? ',nul 
 ;HLPMSG:
-;            DB      'd bbbb eeee <enter>  Display Memory',cr,lf
-;            DB      'e aaaa <enter>       Edit Memory',cr,lf
-;            DB      'g aaaa <enter>       Execute (GoTo) Memory',cr,lf,nul
+;            DB      'D bbbb eeee <enter>  Display Memory',cr,lf
+;            DB      'E aaaa <enter>       Edit Memory',cr,lf
+;            DB      'G aaaa <enter>       Execute (GoTo) Memory',cr,lf,nul
 
 ;*****
 ;* RAM
@@ -191,6 +198,18 @@ CLBUFE:     DS      1
 
             DS      100h 
 SPINIT      EQU     $ 
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
