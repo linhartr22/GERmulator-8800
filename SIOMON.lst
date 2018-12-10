@@ -5,10 +5,10 @@
 0000                BEL:      EQU   $07   
 0000                BS:       EQU   $08   
 0000                HT:       EQU   $09   
-0000                LF:       EQU   $0a   
-0000                FF:       EQU   $0c   
-0000                CR:       EQU   $0d   
-0000                ESC:      EQU   $1b   
+0000                LF:       EQU   $0A   
+0000                FF:       EQU   $0C   
+0000                CR:       EQU   $0D   
+0000                ESC:      EQU   $1B   
 0000                SIODATA:   EQU   $80   
 0000                SIOST:    EQU   $81   
 0000                SIOSTTXRDY:   EQU   $01   
@@ -17,13 +17,13 @@
 0000                SIOMO:    EQU   $81   
 0000                SIOMOS1:   EQU   $40   
 0000                SIOMOS15:   EQU   $80   
-0000                SIOMOS2:   EQU   $c0   
+0000                SIOMOS2:   EQU   $C0   
 0000                SIOMOPE:   EQU   $20   
 0000                SIOMOPEN:   EQU   $10   
 0000                SIOMOC5:   EQU   $00   
 0000                SIOMOC6:   EQU   $04   
 0000                SIOMOC7:   EQU   $08   
-0000                SIOMOC8:   EQU   $0c   
+0000                SIOMOC8:   EQU   $0C   
 0000                SIOMOBS:   EQU   $00   
 0000                SIOMOB1X:   EQU   $01   
 0000                SIOMOB16X:   EQU   $02   
@@ -38,8 +38,26 @@
 0000                SIOCMDIR:   EQU   $40   
 0000                SIOCMDI:   EQU   siocmddtr+siocmdrts+siocmdtxen+siocmder   
 0000                             ;*****
-0000                             ;* Init
-0000                             ;*
+0000                             ;* IRQ Vectors
+0000                          .ORG   $0000   
+0000   C3 00 01               JMP   init   ; RST 0, RESET
+0008                          .ORG   $0008   
+0008   C3 00 01               JMP   init   ; RST 1
+0010                          .ORG   $0010   
+0010   C3 00 01               JMP   init   ; RST 2
+0018                          .ORG   $0018   
+0018   C3 00 01               JMP   init   ; RST 3
+0020                          .ORG   $0020   
+0020   C3 00 01               JMP   init   ; RST 4
+0028                          .ORG   $0028   
+0028   C3 00 01               JMP   init   ; RST 5
+0030                          .ORG   $0030   
+0030   C3 00 01               JMP   init   ; RST 6
+0038                          .ORG   $0038   
+0038   C3 00 01               JMP   init   ; RST 7
+003B                             ;*****
+003B                             ;* Init
+003B                             ;*
 0100                          .ORG   $0100   
 0100   31 00 FF     INIT:     LXI   sp,spinit   ; Init SP
 0103   97           SIOINIT:   SUB   a   ; Clear SIO Init Sequence
@@ -63,13 +81,86 @@
 0124   D3 81                  OUT   siocmd   
 0126   21 00 80               LXI   h,clbuf   ; Get SIO Command Line Buffer Pointer
 0129   01 0C 00               LXI   b,clbufe-clbuf   ; Get SIO Command Line Buffer Size (Zeros B - Size in C)
-012C   CD 3C 18               CALL   sinstr   ; Get SIO Command Line Buffer
+012C   CD 38 18               CALL   sinstr   ; Get SIO Command Line Buffer
 012F   3E 33                  MVI   a,siocmdi   ; Clear SIO RX Enable
 0131   D3 81                  OUT   siocmd   
-0133   C3 1C 01               JMP   main   
-0136                             ;*****
-0136                             ;* Library
-0136                             ;*
+0133   21 00 80     PARSE:    LXI   h,clbuf   ; Get Command Line Buffer Pointer
+0136   CD 82 18               CALL   str2upr   ; Make Upper Case
+0139   7E                     MOV   a,m   ; Get First Character
+013A   23                     INX   h   ; Inc Buffer Pointer
+013B   22 0D 80               SHLD   clbufptr   ; Save Buffer Pointer
+013E   FE 3F                  CPI   '?'   
+0140   CA 5B 01               JZ   help   ; Display Help
+0143   FE 44                  CPI   'D'   
+0145   CA 64 01               JZ   dump   
+0148   FE 45                  CPI   'E'   
+014A   CA DA 01               JZ   entr   
+014D   FE 47                  CPI   'G'   
+014F   CA DD 01               JZ   goto   
+0152   21 36 1E     ERROR:    LXI   h,errmsg   ; Display Error
+0155   CD 0C 18               CALL   soutstr   
+0158   C3 1C 01               JMP   main   ; Next Command
+015B   21 3E 1E     HELP:     LXI   h,hlpmsg   ; Display Help
+015E   CD 0C 18               CALL   soutstr   
+0161   C3 1C 01               JMP   main   ; Next Command
+0164   CD 9C 18     DUMP:     CALL   s2w   ; Get Dump Begin Address
+0167   CA 52 01               JZ   error   ; No Digits Found
+016A   22 0D 80               SHLD   clbufptr   ; Save Buffer Pointer
+016D   3E F0                  MVI   a,$0F0   ; Start on 16 Byte Boundry
+016F   A3                     ANA   e   
+0170   5F                     MOV   e,a   
+0171   EB                     XCHG      ; Save Dump Begin Address
+0172   22 0F 80               SHLD   dumpb   
+0175   EB                     XCHG      ; Restore Buffer Pointer
+0176   CD 9C 18               CALL   s2w   ; Get Dump End Address
+0179   CA 52 01               JZ   error   ; No Digits Found
+017C   22 0D 80               SHLD   clbufptr   ; Save Buffer Pointer
+017F   3E 0F                  MVI   a,$0F   ; End on 16 Byte Boundry
+0181   B3                     ORA   e   
+0182   5F                     MOV   e,a   
+0183   EB                     XCHG      ; Save Dump End Address
+0184   22 11 80               SHLD   dumpe   
+0187   21 C8 1E               LXI   h,dumphd   ; Display Dump Header
+018A   CD 0C 18               CALL   soutstr   
+018D   2A 0F 80     DUMPNL:   LHLD   dumpb   ; Get Address Pointer
+0190   7C                     MOV   A,H   ; Display Address High Byte
+0191   CD 16 18               CALL   southexb   
+0194   7D                     MOV   a,l   ; Display Address Low Byte
+0195   CD 16 18               CALL   southexb   
+0198   3E 20                  MVI   a,' '   ; Display Space
+019A   CD 00 18               CALL   soutc   
+019D   06 10                  MVI   b,16   ; Display 16 Bytes
+019F   7E           DUMPBYTE:   MOV   a,m   ; Get Byte
+01A0   23                     INX   h   ; Inc Address Pointer
+01A1   CD 16 18               CALL   southexb   ; Display Byte
+01A4   3E 20                  MVI   a,' '   
+01A6   CD 00 18               CALL   soutc   
+01A9   05                     DCR   b   ; Display Another Byte?
+01AA   C2 9F 01               JNZ   dumpbyte   ; Yes
+01AD   2A 0F 80               LHLD   dumpb   ; Get Address Pointer
+01B0   06 10                  MVI   b,16   ; Display 16 Characters
+01B2   7E           DUMPCHAR:   MOV   a,m   ; Get Character
+01B3   23                     INX   h   ; Inc Address Pointer
+01B4   FE 20                  CPI   ' '   ; Printable Character?
+01B6   DA BE 01               JC   dumpchar1   ; No
+01B9   FE 80                  CPI   $80   
+01BB   DA C0 01               JC   dumpchar2   ; Yes
+01BE   3E 2E        DUMPCHAR1:   MVI   a,'.'   ; Non-Printable Character
+01C0   CD 00 18     DUMPCHAR2:   CALL   soutc   ; Display Character
+01C3   05                     DCR   b   ; Display Another Character?
+01C4   C2 B2 01               JNZ   dumpchar   ; Yes
+01C7   CD D8 18               CALL   soutcrlf   ; Display CRLF
+01CA   22 0F 80               SHLD   dumpb   ; Save Dump Begin Address
+01CD   EB                     XCHG      
+01CE   2A 11 80               LHLD   dumpe   ; Get Dump End Address
+01D1   CD E2 18               CALL   cmphlde   ; Dump End >= Dump Begin
+01D4   D2 8D 01               JNC   dumpnl   ; Yes, Dump Next Line
+01D7   C3 1C 01               JMP   main   ; No, Next Command
+01DA   C3 1C 01     ENTR:     JMP   main   ; Next Command
+01DD   C3 1C 01     GOTO:     JMP   main   ; Next Command
+01E0                             ;*****
+01E0                             ;* Library
+01E0                             ;*
 1800                          .ORG   $1800   
 1800                             ;=====
 1800                             ;= Serial Output Character in Acc
@@ -82,135 +173,246 @@
 1809   D3 80                  OUT   siodata   ; Output Char to SID Data Port
 180B   C9           SOUTCX:   RET      ; Done
 180C                             ;=====
-180C                             ;= Serial Output String at HL
+180C                             ;= Serial Output String at HL, Null terminated
 180C                             ;= Modifies: AF, HL
 180C   7E           SOUTSTR:   MOV   a,m   ; Get Char from Buffer
 180D   B7                     ORA   a   ; Null?
-180E   CA 18 18               JZ   soutstrx   ; Yes, Exit
-1811   CD 00 18               CALL   soutc   ; No, Serial Output Char
-1814   23                     INX   h   ; Inc Buffer Pointer
-1815   C3 0C 18               JMP   soutstr   ; Get Next Char
-1818   C9           SOUTSTRX:   RET      ; End of String
-1819                             ;=====
-1819                             ;= Serial Output Hex Byte in Acc
-1819                             ;= Modifies AF
-1819   F5           SOUTHEXB:   PUSH   psw   ; Save Byte
-181A   0F                     RRC      ; Get Upper Nibble
-181B   0F                     RRC      
-181C   0F                     RRC      
-181D   0F                     RRC      
-181E   E6 0F                  ANI   0fh   ; Mask off Upper Nibble
-1820   C6 30                  ADI   '0'   ; Convert to ASCII
-1822   FE 3A                  CPI   ':'   ; Hex Adjust?
-1824   DA 29 18               JC   southexb1   ; No
-1827   C6 07                  ADI   'A'-':'   ; Yes
-1829   CD 00 18     SOUTHEXB1:   CALL   soutc   ; Serial Output Char
-182C   F1                     POP   psw   ; Restore Char
-182D   E6 0F                  ANI   0fh   ; Mask off Upper Nibble
-182F   C6 30                  ADI   '0'   ; Convert to ASCII
-1831   FE 3A                  CPI   ':'   ; Hex Adjust?
-1833   DA 38 18               JC   southexb2   ; No
-1836   C6 07                  ADI   'A'-':'   ; Yes
-1838   C3 00 18     SOUTHEXB2:   JMP   soutc   ; Serial Output Char
-183B   C9                     RET      ; Done
-183C                             ;=====
-183C                             ;= Serial Input String at HL
-183C                             ;= Modifies AF, BC, DE, HL
-183C   CD 6E 18     SINSTR:   CALL   sinc   ; Get Character
-183F   57                     MOV   d,a   ; Save Character
-1840   FE 0D                  CPI   cr   ; Carriage Return?
-1842   CA 6B 18               JZ   sinstrx   ; Yes, Exit
-1845   FE 08                  CPI   bs   ; Backspace?
-1847   CA 5E 18               JZ   sinstrbs   ; Yes, Backspace
-184A   FE 20                  CPI   ' '   ; Printable Character?
-184C   DA 3C 18               JC   sinstr   ; No, Ignore Character
-184F   78                     MOV   a,b   ; Character Counter = Buffer Size?
-1850   B9                     CMP   c   
-1851   CA 3C 18               JZ   sinstr   ; Yes, Ignore Character
-1854   7A                     MOV   a,d   ; Restore Character
-1855   77                     MOV   m,a   ; No, Save Character in Buffer
-1856   23                     INX   h   ; Inc Buffer Pointer
-1857   04                     INR   b   ; Inc Buffer Count
-1858   CD 00 18     SINSTRECHO:   CALL   soutc   ; Echo Character
-185B   C3 3C 18               JMP   sinstr   ; Get Next Character
-185E   78           SINSTRBS:   MOV   a,b   ; Count = 0?
-185F   B7                     ORA   a   
-1860   CA 3C 18               JZ   sinstr   ; Yes, Ignore Backspace
-1863   2B                     DCX   h   ; Dec Buffer Pointer
-1864   05                     DCR   b   ; Dec Character Count
-1865   36 20                  MVI   m,' '   ; Erase Character in Buffer
-1867   7A                     MOV   a,d   ; Restore Character
-1868   C3 58 18               JMP   sinstrecho   ; Echo Character
-186B   36 00        SINSTRX:   MVI   m,nul   ; Null Terminate Buffer
-186D   C9                     RET      
-186E                             ;=====
-186E                             ;= Serian Input Character to Acc
-186E                             ;= Modifies AF
-186E   DB 81        SINC:     IN   siost   ; Character Ready?
-1870   E6 02                  ANI   siostrxrdy   
-1872   CA 6E 18               JZ   sinc   ; No, Keep Waiting
-1875   DB 80                  IN   siodata   ; Input Character
-1877   E6 7F                  ANI   $7f   ; Make 7-bit ASCII
-1879   C9                     RET      
-187A                             ;*****
-187A                             ;* String Constants
-187A                             ;*
-1E00                          .ORG   1e00H   
+180E   C8                     RZ   soutstrx   ; Yes, Exit
+180F   CD 00 18               CALL   soutc   ; No, Serial Output Char
+1812   23                     INX   h   ; Inc Buffer Pointer
+1813   C3 0C 18               JMP   soutstr   ; Get Next Char
+1816                             ;=====
+1816                             ;= Serial Output Hex Byte in Acc
+1816                             ;= Modifies AF
+1816   F5           SOUTHEXB:   PUSH   psw   ; Save Byte
+1817   0F                     RRC      ; Get Upper Nibble
+1818   0F                     RRC      
+1819   0F                     RRC      
+181A   0F                     RRC      
+181B   E6 0F                  ANI   $0F   ; Mask off Upper Nibble
+181D   C6 30                  ADI   '0'   ; Convert to ASCII
+181F   FE 3A                  CPI   ':'   ; Hex Adjust?
+1821   DA 26 18               JC   southexb1   ; No
+1824   C6 07                  ADI   'A'-':'   ; Yes
+1826   CD 00 18     SOUTHEXB1:   CALL   soutc   ; Serial Output Char
+1829   F1                     POP   psw   ; Restore Char
+182A   E6 0F                  ANI   $0F   ; Mask off Upper Nibble
+182C   C6 30                  ADI   '0'   ; Convert to ASCII
+182E   FE 3A                  CPI   ':'   ; Hex Adjust?
+1830   DA 35 18               JC   southexb2   ; No
+1833   C6 07                  ADI   'A'-':'   ; Yes
+1835   C3 00 18     SOUTHEXB2:   JMP   soutc   ; Serial Output Char
+1838                             ;=====
+1838                             ;= Serial Input String at HL, B=Count, C=Length
+1838                             ;= Set B to 0 when calling
+1838                             ;= Modifies AF, BC, DE, HL
+1838   E5           SINSTR:   PUSH   h   ; Save Registers
+1839   C5                     PUSH   b   
+183A   36 00        SINSTRCB:   MVI   m,0   ; Clear Buffer
+183C   0D                     DCR   c   
+183D   C2 3A 18               JNZ   sinstrcb   
+1840   C1                     POP   b   ; Restore Registers
+1841   E1                     POP   h   
+1842   CD 76 18     SINSTRGC:   CALL   sinc   ; Get Character
+1845   57                     MOV   d,a   ; Save Character
+1846   FE 0D                  CPI   cr   ; Carriage Return?
+1848   CA 71 18               JZ   sinstrx   ; Yes, Exit
+184B   FE 08                  CPI   bs   ; Backspace?
+184D   CA 64 18               JZ   sinstrbs   ; Yes, Backspace
+1850   FE 20                  CPI   ' '   ; Printable Character?
+1852   DA 38 18               JC   sinstr   ; No, Ignore Character
+1855   78                     MOV   a,b   ; Character Counter = Buffer Size?
+1856   B9                     CMP   c   
+1857   CA 38 18               JZ   sinstr   ; Yes, Ignore Character
+185A   7A                     MOV   a,d   ; Restore Character
+185B   77                     MOV   m,a   ; No, Save Character in Buffer
+185C   23                     INX   h   ; Inc Buffer Pointer
+185D   04                     INR   b   ; Inc Buffer Count
+185E   CD 00 18     SINSTRECHO:   CALL   soutc   ; Echo Character
+1861   C3 38 18               JMP   sinstr   ; Get Next Character
+1864   78           SINSTRBS:   MOV   a,b   ; Count = 0?
+1865   B7                     ORA   a   
+1866   CA 38 18               JZ   sinstr   ; Yes, Ignore Backspace
+1869   2B                     DCX   h   ; Dec Buffer Pointer
+186A   05                     DCR   b   ; Dec Character Count
+186B   36 20                  MVI   m,' '   ; Erase Character in Buffer
+186D   7A                     MOV   a,d   ; Restore Character
+186E   C3 5E 18               JMP   sinstrecho   ; Echo Character
+1871   36 00        SINSTRX:   MVI   m,nul   ; Null Terminate Buffer
+1873   C3 D8 18               JMP   soutcrlf   ; Send CRLF
+1876                             ;=====
+1876                             ;= Serial Input Character to Acc
+1876                             ;= Modifies AF
+1876   DB 81        SINC:     IN   siost   ; Character Ready?
+1878   E6 02                  ANI   siostrxrdy   
+187A   CA 76 18               JZ   sinc   ; No, Keep Waiting
+187D   DB 80                  IN   siodata   ; Input Character
+187F   E6 7F                  ANI   $7F   ; Make 7-bit ASCII
+1881   C9                     RET      
+1882                             ;=====
+1882                             ;= String at HL to Upper Case
+1882                             ;= Modifies AF
+1882   E5           STR2UPR:   PUSH   h   ; Save String Pointer
+1883   7E           STR2UPRN:   MOV   a,m   ; Character = Null?
+1884   B7                     ORA   a   
+1885   CA 9A 18               JZ   str2uprx   ; Yes, Exit
+1888   FE 60                  CPI   'a'-1   ; Character Lower Case?
+188A   DA 96 18               JC   str2upr1   ; No
+188D   FE 7B                  CPI   'z'+1   
+188F   D2 96 18               JNC   str2upr1   ; No
+1892   3E E0                  MVI   a,0-('a'-'A')   ; Yes, Make Upper Case
+1894   86                     ADD   m   
+1895   77                     MOV   m,a   
+1896   23           STR2UPR1:   INX   h   ; Inc Pointer
+1897   C3 83 18               JMP   str2uprn   ; Check Next Character
+189A   E1           STR2UPRX:   POP   h   ; Restore String Pointer
+189B   C9                     RET      
+189C                             ;=====
+189C                             ;= Parse Word to DE from String at HL
+189C                             ;= Returns HL Pointing to Next Non-Digit Character
+189C                             ;= Returns Z Digit Found Flag
+189C                             ;= Modifies HL, DE, BC, AF
+189C   11 00 00     S2W:      LXI   d,0   ; Clear Word
+189F   4B                     MOV   c,e   ; Clear Digit Found Flag
+18A0   7E           S2WNC:    MOV   a,m   ; Get Character
+18A1   B7                     ORA   a   ; Character = Nul?
+18A2   CA D5 18               JZ   s2wx   ; Yes, Exit
+18A5   D6 30                  SUI   '0'   ; Character = Digit?
+18A7   DA D0 18               JC   s2wdl   ; No, Process Delimeter
+18AA   FE 0A                  CPI   10   
+18AC   DA B9 18               JC   s2wdg   ; Yes, Process Digit
+18AF   D6 07                  SUI   'A'-'9'-1   
+18B1   DA D0 18               JC   s2wdl   ; No, Process Delimeter
+18B4   FE 10                  CPI   16   
+18B6   D2 D0 18               JNC   s2wdl   ; Yes, Process Delimeter
+18B9   0E FF        S2WDG:    MVI   c,-1   ; Set Digit Found Flag
+18BB   F5                     PUSH   psw   ; Save Digit
+18BC   06 04                  MVI   b,4   ; Shift DE Left 4 Bits
+18BE   B7           S2WDG1:   ORA   a   ; Clear Carry
+18BF   7B                     MOV   a,e   
+18C0   17                     RAL      
+18C1   5F                     MOV   e,a   
+18C2   7A                     MOV   a,d   
+18C3   17                     RAL      
+18C4   57                     MOV   d,a   
+18C5   05                     DCR   b   ; Again?
+18C6   C2 BE 18               JNZ   s2wdg1   ; Yes
+18C9   F1                     POP   psw   ; Restore Digit
+18CA   B3                     ORA   e   ; Save Digit
+18CB   5F                     MOV   e,a   
+18CC   23           S2WINC:   INX   h   ; Inc String Pointer
+18CD   C3 A0 18               JMP   s2wnc   ; Process Next Character
+18D0   79           S2WDL:    MOV   a,c   ; Digit Found?
+18D1   B7                     ORA   a   
+18D2   CA CC 18               JZ   s2winc   ; No, Keep Looking
+18D5   79           S2WX:     MOV   a,c   ; Set Z to Digit Found Flag
+18D6   B7                     ORA   a   
+18D7   C9                     RET      
+18D8                             ;=====
+18D8                             ;* Serial Output CRLF
+18D8                             ;* Modifies AF
+18D8   3E 0D        SOUTCRLF:   MVI   A,cr   ; Display CR
+18DA   CD 00 18               CALL   SOUTC   
+18DD   3E 0A                  MVI   a,lf   ; Display LF
+18DF   C3 00 18               JMP   soutc   
+18E2                             ;=====
+18E2                             ;* Compare HL to DE
+18E2                             ;* Modifies AF
+18E2   7D           CMPHLDE:   MOV   a,l   ; Subtract DE from HL
+18E3   93                     SUB   e   
+18E4   7C                     MOV   a,h   
+18E5   9A                     SBB   d   
+18E6   C9                     RET      
+18E7                             ;*****
+18E7                             ;* String Constants
+18E7                             ;*
+1E00                          .ORG   1E00H   
 1E00   0D 0A 0A 47 45 52 6D 6F 6E 20 76 31 2E 30 07 GRTMSG:   DB   cr,lf,lf,'GERmon v1.0',bel   
 1E0F   20 20 20 52 6F 67 65 72 20 44 2E 20 4C 69 6E 68 61 72 74 07 DB   '   Roger D. Linhart',bel   
-1E23   20 20 20 4E 6F 76 20 32 30 31 38 07 0D 0A 0A 00 DB   '   Nov 2018',bel,cr,lf,lf,nul   
-1E33   0D 0A 3F 20 00 CLMSG:   DB   cr,lf,'? ',nul   
-1E38                             ;HLPMSG:
-1E38                             ;            DB      'D bbbb eeee <enter>  Display Memory',cr,lf
-1E38                             ;            DB      'E aaaa <enter>       Edit Memory',cr,lf
-1E38                             ;            DB      'G aaaa <enter>       Execute (GoTo) Memory',cr,lf,nul
-1E38                             ;*****
-1E38                             ;* RAM
-1E38                             ;*
+1E23   20 20 20 4E 6F 76 20 32 30 31 38 07 0D 0A 0A DB   '   Nov 2018',bel,cr,lf,lf   
+1E32   00                     DB   nul   
+1E33   3F 20        CLMSG:    DB   '? '   
+1E35   00                     DB   nul   
+1E36   45 72 72 6F 72 0D 0A ERRMSG:   DB   'Error',cr,lf   
+1E3D   00                     DB   nul   
+1E3E   0D 0A        HLPMSG:   DB   cr,lf   
+1E40   43 6F 6D 6D 61 6E 64 73 0D 0A DB   'Commands',cr,lf   
+1E4A   3D 3D 3D 3D 3D 3D 3D 3D 0D 0A DB   '========',cr,lf   
+1E54   44 20 62 62 62 62 20 65 65 65 65 20 3C 65 6E 74 65 72 3E 20 20 DB   'D bbbb eeee <enter>  '   
+1E69   44 69 73 70 6C 61 79 20 4D 65 6D 6F 72 79 0D 0A DB   'Display Memory',cr,lf   
+1E79   45 20 61 61 61 61 20 3C 65 6E 74 65 72 3E 20 20 20 20 20 20 20 DB   'E aaaa <enter>       '   
+1E8E   45 64 69 74 20 4D 65 6D 6F 72 79 0D 0A DB   'Edit Memory',cr,lf   
+1E9B   47 20 61 61 61 61 20 3C 65 6E 74 65 72 3E 20 20 20 20 20 20 20 DB   'G aaaa <enter>       '   
+1EB0   45 78 65 63 75 74 65 20 28 47 6F 54 6F 29 20 4D 65 6D 6F 72 79 0D 0A DB   'Execute (GoTo) Memory',cr,lf   
+1EC7   00                     DB   nul   
+1EC8   20 20 20 20 20 30 30 20 30 31 20 30 32 20 30 33 20 30 34 20 30 35 20 30 36 20 30 37 20 30 38 20 DUMPHD:   DB   '     00 01 02 03 04 05 06 07 08 '   
+1EE8   30 39 20 30 41 20 30 42 20 30 43 20 30 44 20 30 45 20 30 46 20 DB   '09 0A 0B 0C 0D 0E 0F '   
+1EFD   30 31 32 33 34 35 36 37 38 39 41 42 43 44 45 46 0D 0A DB   '0123456789ABCDEF',cr,lf   
+1F0F   00                     DB   nul   
+1F10                             ;*****
+1F10                             ;* RAM
+1F10                             ;*
 8000                          .ORG   8000h   
 8000                CLBUF:    DS   12   ; Command Line Buffer (String - Null Delimited)
-800C                CLBUFE:   DS   1   
-800D                             ;*****
-800D                             ;* STACK
-800D                             ;*
-FE00                          .ORG   0fe00h   
+800C   00           CLBUFE:   DB   0   ; Command Line Buffer End and Space for Null Delimeter
+800D   00 00        CLBUFPTR:   DW   0   ; Command Line Buffer Pointer
+800F   00 00        DUMPB:    DW   0   ; Dump Address Begin
+8011   00 00        DUMPE:    DW   0   ; Dump Address End
+8013                             ;*****
+8013                             ;* STACK
+8013                             ;*
+FE00                          .ORG   0FE00h   
 FE00                          DS   100h   
 FF00                SPINIT:   EQU   $   
 
 
 NUL:                0000 DEFINED AT LINE 4
-                    > USED AT LINE 159
+                    > USED AT LINE 257
+                    > USED AT LINE 357
+                    > USED AT LINE 359
+                    > USED AT LINE 361
+                    > USED AT LINE 371
+                    > USED AT LINE 375
 BEL:                0007 DEFINED AT LINE 5
-                    > USED AT LINE 178
-                    > USED AT LINE 179
+                    > USED AT LINE 355
+                    > USED AT LINE 356
 BS:                 0008 DEFINED AT LINE 6
-                    > USED AT LINE 138
+                    > USED AT LINE 236
 HT:                 0009 DEFINED AT LINE 7
 LF:                 000A DEFINED AT LINE 8
-                    > USED AT LINE 177
-                    > USED AT LINE 180
+                    > USED AT LINE 337
+                    > USED AT LINE 354
+                    > USED AT LINE 362
 FF:                 000C DEFINED AT LINE 9
 CR:                 000D DEFINED AT LINE 10
-                    > USED AT LINE 136
-                    > USED AT LINE 177
-                    > USED AT LINE 180
+                    > USED AT LINE 234
+                    > USED AT LINE 335
+                    > USED AT LINE 354
+                    > USED AT LINE 360
+                    > USED AT LINE 362
+                    > USED AT LINE 363
+                    > USED AT LINE 364
+                    > USED AT LINE 366
+                    > USED AT LINE 368
+                    > USED AT LINE 370
+                    > USED AT LINE 374
 ESC:                001B DEFINED AT LINE 11
 SIODATA:            0080 DEFINED AT LINE 13
-                    > USED AT LINE 94
-                    > USED AT LINE 168
+                    > USED AT LINE 186
+                    > USED AT LINE 267
 SIOST:              0081 DEFINED AT LINE 15
-                    > USED AT LINE 90
-                    > USED AT LINE 165
+                    > USED AT LINE 182
+                    > USED AT LINE 264
 SIOSTTXRDY:         0001 DEFINED AT LINE 16
 SIOSTRXRDY:         0002 DEFINED AT LINE 17
-                    > USED AT LINE 166
+                    > USED AT LINE 265
 SIOSTTXE:           0004 DEFINED AT LINE 18
-                    > USED AT LINE 91
+                    > USED AT LINE 183
 SIOMO:              0081 DEFINED AT LINE 20
-                    > USED AT LINE 53
-                    > USED AT LINE 54
-                    > USED AT LINE 55
-                    > USED AT LINE 59
+                    > USED AT LINE 72
+                    > USED AT LINE 73
+                    > USED AT LINE 74
+                    > USED AT LINE 78
 SIOMOS1:            0040 DEFINED AT LINE 21
                     > USED AT LINE 34
 SIOMOS15:           0080 DEFINED AT LINE 22
@@ -228,74 +430,170 @@ SIOMOB16X:          0002 DEFINED AT LINE 32
                     > USED AT LINE 34
 SIOMOB64X:          0003 DEFINED AT LINE 33
 SIOMOI:             004E DEFINED AT LINE 34
-                    > USED AT LINE 58
-SIOCMD:             0081 DEFINED AT LINE 36
-                    > USED AT LINE 57
-                    > USED AT LINE 61
-                    > USED AT LINE 72
                     > USED AT LINE 77
+SIOCMD:             0081 DEFINED AT LINE 36
+                    > USED AT LINE 76
+                    > USED AT LINE 80
+                    > USED AT LINE 91
+                    > USED AT LINE 96
 SIOCMDTXEN:         0001 DEFINED AT LINE 37
                     > USED AT LINE 43
 SIOCMDDTR:          0002 DEFINED AT LINE 38
                     > USED AT LINE 43
 SIOCMDRXEN:         0004 DEFINED AT LINE 39
-                    > USED AT LINE 71
+                    > USED AT LINE 90
 SIOCMDER:           0010 DEFINED AT LINE 40
                     > USED AT LINE 43
 SIOCMDRTS:          0020 DEFINED AT LINE 41
                     > USED AT LINE 43
 SIOCMDIR:           0040 DEFINED AT LINE 42
-                    > USED AT LINE 56
-SIOCMDI:            0033 DEFINED AT LINE 43
-                    > USED AT LINE 60
-                    > USED AT LINE 71
-                    > USED AT LINE 76
-INIT:               0100 DEFINED AT LINE 50
-SIOINIT:            0103 DEFINED AT LINE 52
-MONINIT:            0116 DEFINED AT LINE 63
-MAIN:               011C DEFINED AT LINE 69
-                    > USED AT LINE 79
-SOUTC:              1800 DEFINED AT LINE 89
-                    > USED AT LINE 92
-                    > USED AT LINE 103
-                    > USED AT LINE 121
-                    > USED AT LINE 128
-                    > USED AT LINE 149
-SOUTCX:             180B DEFINED AT LINE 95
-SOUTSTR:            180C DEFINED AT LINE 100
-                    > USED AT LINE 64
-                    > USED AT LINE 70
-                    > USED AT LINE 105
-SOUTSTRX:           1818 DEFINED AT LINE 106
-                    > USED AT LINE 102
-SOUTHEXB:           1819 DEFINED AT LINE 111
-SOUTHEXB1:          1829 DEFINED AT LINE 121
-                    > USED AT LINE 119
-SOUTHEXB2:          1838 DEFINED AT LINE 128
-                    > USED AT LINE 126
-SINSTR:             183C DEFINED AT LINE 134
                     > USED AT LINE 75
-                    > USED AT LINE 141
-                    > USED AT LINE 144
-                    > USED AT LINE 150
-                    > USED AT LINE 153
-SINSTRECHO:         1858 DEFINED AT LINE 149
-                    > USED AT LINE 158
-SINSTRBS:           185E DEFINED AT LINE 151
-                    > USED AT LINE 139
-SINSTRX:            186B DEFINED AT LINE 159
-                    > USED AT LINE 137
-SINC:               186E DEFINED AT LINE 165
-                    > USED AT LINE 134
-                    > USED AT LINE 167
-GRTMSG:             1E00 DEFINED AT LINE 177
-                    > USED AT LINE 63
-CLMSG:              1E33 DEFINED AT LINE 180
-                    > USED AT LINE 69
-CLBUF:              8000 DEFINED AT LINE 191
-                    > USED AT LINE 73
-                    > USED AT LINE 74
-CLBUFE:             800C DEFINED AT LINE 192
-                    > USED AT LINE 74
-SPINIT:             FF00 DEFINED AT LINE 200
+SIOCMDI:            0033 DEFINED AT LINE 43
+                    > USED AT LINE 79
+                    > USED AT LINE 90
+                    > USED AT LINE 95
+INIT:               0100 DEFINED AT LINE 69
+                    > USED AT LINE 48
                     > USED AT LINE 50
+                    > USED AT LINE 52
+                    > USED AT LINE 54
+                    > USED AT LINE 56
+                    > USED AT LINE 58
+                    > USED AT LINE 60
+                    > USED AT LINE 62
+SIOINIT:            0103 DEFINED AT LINE 71
+MONINIT:            0116 DEFINED AT LINE 82
+MAIN:               011C DEFINED AT LINE 88
+                    > USED AT LINE 113
+                    > USED AT LINE 116
+                    > USED AT LINE 169
+                    > USED AT LINE 170
+                    > USED AT LINE 171
+PARSE:              0133 DEFINED AT LINE 98
+ERROR:              0152 DEFINED AT LINE 111
+                    > USED AT LINE 118
+                    > USED AT LINE 127
+HELP:               015B DEFINED AT LINE 114
+                    > USED AT LINE 104
+DUMP:               0164 DEFINED AT LINE 117
+                    > USED AT LINE 106
+DUMPNL:             018D DEFINED AT LINE 136
+                    > USED AT LINE 168
+DUMPBYTE:           019F DEFINED AT LINE 144
+                    > USED AT LINE 150
+DUMPCHAR:           01B2 DEFINED AT LINE 153
+                    > USED AT LINE 162
+DUMPCHAR1:          01BE DEFINED AT LINE 159
+                    > USED AT LINE 156
+DUMPCHAR2:          01C0 DEFINED AT LINE 160
+                    > USED AT LINE 158
+ENTR:               01DA DEFINED AT LINE 170
+                    > USED AT LINE 108
+GOTO:               01DD DEFINED AT LINE 171
+                    > USED AT LINE 110
+SOUTC:              1800 DEFINED AT LINE 181
+                    > USED AT LINE 142
+                    > USED AT LINE 148
+                    > USED AT LINE 160
+                    > USED AT LINE 184
+                    > USED AT LINE 195
+                    > USED AT LINE 212
+                    > USED AT LINE 219
+                    > USED AT LINE 247
+                    > USED AT LINE 336
+                    > USED AT LINE 338
+SOUTCX:             180B DEFINED AT LINE 187
+SOUTSTR:            180C DEFINED AT LINE 192
+                    > USED AT LINE 83
+                    > USED AT LINE 89
+                    > USED AT LINE 112
+                    > USED AT LINE 115
+                    > USED AT LINE 135
+                    > USED AT LINE 197
+SOUTHEXB:           1816 DEFINED AT LINE 202
+                    > USED AT LINE 138
+                    > USED AT LINE 140
+                    > USED AT LINE 146
+SOUTHEXB1:          1826 DEFINED AT LINE 212
+                    > USED AT LINE 210
+SOUTHEXB2:          1835 DEFINED AT LINE 219
+                    > USED AT LINE 217
+SINSTR:             1838 DEFINED AT LINE 225
+                    > USED AT LINE 94
+                    > USED AT LINE 239
+                    > USED AT LINE 242
+                    > USED AT LINE 248
+                    > USED AT LINE 251
+SINSTRCB:           183A DEFINED AT LINE 227
+                    > USED AT LINE 229
+SINSTRGC:           1842 DEFINED AT LINE 232
+SINSTRECHO:         185E DEFINED AT LINE 247
+                    > USED AT LINE 256
+SINSTRBS:           1864 DEFINED AT LINE 249
+                    > USED AT LINE 237
+SINSTRX:            1871 DEFINED AT LINE 257
+                    > USED AT LINE 235
+SINC:               1876 DEFINED AT LINE 264
+                    > USED AT LINE 232
+                    > USED AT LINE 266
+STR2UPR:            1882 DEFINED AT LINE 274
+                    > USED AT LINE 99
+STR2UPRN:           1883 DEFINED AT LINE 275
+                    > USED AT LINE 286
+STR2UPR1:           1896 DEFINED AT LINE 285
+                    > USED AT LINE 279
+                    > USED AT LINE 281
+STR2UPRX:           189A DEFINED AT LINE 287
+                    > USED AT LINE 277
+S2W:                189C DEFINED AT LINE 295
+                    > USED AT LINE 117
+                    > USED AT LINE 126
+S2WNC:              18A0 DEFINED AT LINE 297
+                    > USED AT LINE 324
+S2WDG:              18B9 DEFINED AT LINE 308
+                    > USED AT LINE 303
+S2WDG1:             18BE DEFINED AT LINE 311
+                    > USED AT LINE 319
+S2WINC:             18CC DEFINED AT LINE 323
+                    > USED AT LINE 327
+S2WDL:              18D0 DEFINED AT LINE 325
+                    > USED AT LINE 301
+                    > USED AT LINE 305
+                    > USED AT LINE 307
+S2WX:               18D5 DEFINED AT LINE 328
+                    > USED AT LINE 299
+SOUTCRLF:           18D8 DEFINED AT LINE 335
+                    > USED AT LINE 163
+                    > USED AT LINE 258
+CMPHLDE:            18E2 DEFINED AT LINE 343
+                    > USED AT LINE 167
+GRTMSG:             1E00 DEFINED AT LINE 354
+                    > USED AT LINE 82
+CLMSG:              1E33 DEFINED AT LINE 358
+                    > USED AT LINE 88
+ERRMSG:             1E36 DEFINED AT LINE 360
+                    > USED AT LINE 111
+HLPMSG:             1E3E DEFINED AT LINE 362
+                    > USED AT LINE 114
+DUMPHD:             1EC8 DEFINED AT LINE 372
+                    > USED AT LINE 134
+CLBUF:              8000 DEFINED AT LINE 382
+                    > USED AT LINE 92
+                    > USED AT LINE 93
+                    > USED AT LINE 98
+CLBUFE:             800C DEFINED AT LINE 383
+                    > USED AT LINE 93
+CLBUFPTR:           800D DEFINED AT LINE 384
+                    > USED AT LINE 102
+                    > USED AT LINE 119
+                    > USED AT LINE 128
+DUMPB:              800F DEFINED AT LINE 385
+                    > USED AT LINE 124
+                    > USED AT LINE 136
+                    > USED AT LINE 151
+                    > USED AT LINE 164
+DUMPE:              8011 DEFINED AT LINE 386
+                    > USED AT LINE 133
+                    > USED AT LINE 166
+SPINIT:             FF00 DEFINED AT LINE 394
+                    > USED AT LINE 69
