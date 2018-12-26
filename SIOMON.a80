@@ -9,14 +9,14 @@ LF          EQU     $0A
 FF          EQU     $0C 
 CR          EQU     $0D 
 ESC         EQU     $1B 
-
+; 
 SIODATA     EQU     $80 
-
+; 
 SIOST       EQU     $81 
 SIOSTTXRDY  EQU     $01 
 SIOSTRXRDY  EQU     $02 
 SIOSTTXE    EQU     $04 
-
+; 
 SIOMO       EQU     $81 
 SIOMOS1     EQU     $40 
 SIOMOS15    EQU     $80 
@@ -32,7 +32,7 @@ SIOMOB1X    EQU     $01
 SIOMOB16X   EQU     $02 
 SIOMOB64X   EQU     $03 
 SIOMOI      EQU     siomos1+siomoc8+siomob16x 
-
+; 
 SIOCMD      EQU     $81 
 SIOCMDTXEN  EQU     $01 
 SIOCMDDTR   EQU     $02 
@@ -41,9 +41,10 @@ SIOCMDER    EQU     $10
 SIOCMDRTS   EQU     $20 
 SIOCMDIR    EQU     $40 
 SIOCMDI     EQU     siocmddtr+siocmdrts+siocmdtxen+siocmder 
-
+; 
 ;*****
 ;* IRQ Vectors
+;*
             .ORG    $0000 
             JMP     init ; RST 0, RESET
             .ORG    $0008 
@@ -60,7 +61,7 @@ SIOCMDI     EQU     siocmddtr+siocmdrts+siocmdtxen+siocmder
             JMP     init ; RST 6
             .ORG    $0038 
             JMP     init ; RST 7
-
+; 
 ;*****
 ;* Init
 ;*
@@ -81,100 +82,152 @@ SIOINIT:    SUB     a ; Clear SIO Init Sequence
 
 MONINIT:    LXI     h,grtmsg ; Display Greet Message
             CALL    soutstr 
-
+; 
 ;*****
 ;* Main
 ;*
 MAIN:       LXI     h,clmsg ; Display Prompt
             CALL    soutstr 
-            MVI     a,siocmdi+siocmdrxen ; Set SIO RX Enable
-            OUT     siocmd 
             LXI     h,clbuf ; Get SIO Command Line Buffer Pointer
             LXI     b,clbufe-clbuf ; Get SIO Command Line Buffer Size (Zeros B - Size in C)
             CALL    sinstr ; Get SIO Command Line Buffer
-            MVI     a,siocmdi ; Clear SIO RX Enable
-            OUT     siocmd 
-
-PARSE:      LXI     h,clbuf ; Get Command Line Buffer Pointer
-            CALL    str2upr ; Make Upper Case
-            MOV     a,m ; Get First Character
+PARSE:      MOV     a,m ; Get First Character
             INX     h ; Inc Buffer Pointer
-            SHLD    clbufptr ; Save Buffer Pointer
             CPI     '?' 
             JZ      help ; Display Help
             CPI     'D' 
             JZ      dump 
             CPI     'E' 
-            JZ      entr 
+            JZ      edit 
             CPI     'G' 
             JZ      goto 
+; 
+;*****
+;* Error
+;*
 ERROR:      LXI     h,errmsg ; Display Error
             CALL    soutstr 
             JMP     main ; Next Command
+; 
+;*****
+;* Help
+;*
 HELP:       LXI     h,hlpmsg ; Display Help
             CALL    soutstr 
             JMP     main ; Next Command
+; 
+;*****
+;* Dump
+;* HL = Command Line Buffer
+;*
 DUMP:       CALL    s2w ; Get Dump Begin Address
             JZ      error ; No Digits Found
-            SHLD    clbufptr ; Save Buffer Pointer
             MVI     a,$0F0 ; Start on 16 Byte Boundry
             ANA     e 
             MOV     e,a 
             XCHG     ; Save Dump Begin Address
-            SHLD    dumpb 
+            SHLD    addrbeg 
             XCHG     ; Restore Buffer Pointer
             CALL    s2w ; Get Dump End Address
             JZ      error ; No Digits Found
-            SHLD    clbufptr ; Save Buffer Pointer
             MVI     a,$0F ; End on 16 Byte Boundry
             ORA     e 
             MOV     e,a 
             XCHG     ; Save Dump End Address
-            SHLD    dumpe 
+            SHLD    addrend 
             LXI     h,dumphd ; Display Dump Header
             CALL    soutstr 
-DUMPNL:     LHLD    dumpb ; Get Address Pointer
-            MOV     A,H ; Display Address High Byte
+DUMPNL:     LHLD    addrbeg ; Get Address Pointer
+            MOV     a,h ; Display Address High Byte
             CALL    southexb 
             MOV     a,l ; Display Address Low Byte
             CALL    southexb 
             MVI     a,' ' ; Display Space
             CALL    soutc 
             MVI     b,16 ; Display 16 Bytes
-DUMPBYTE:   MOV     a,m ; Get Byte
+DUMPBT:     MOV     a,m ; Get Byte
             INX     h ; Inc Address Pointer
             CALL    southexb ; Display Byte
-            MVI     a,' ' 
+            MVI     a,' ' ; Display Space
             CALL    soutc 
             DCR     b ; Display Another Byte?
-            JNZ     dumpbyte ; Yes
-            LHLD    dumpb ; Get Address Pointer
+            JNZ     dumpbt ; Yes
+            LHLD    addrbeg ; Get Address Pointer
             MVI     b,16 ; Display 16 Characters
-DUMPCHAR:   MOV     a,m ; Get Character
+DUMPCH:     MOV     a,m ; Get Character
             INX     h ; Inc Address Pointer
             CPI     ' ' ; Printable Character?
-            JC      dumpchar1 ; No
+            JC      dumpch1 ; No
             CPI     $80 
-            JC      dumpchar2 ; Yes
-DUMPCHAR1:  MVI     a,'.' ; Non-Printable Character
-DUMPCHAR2:  CALL    soutc ; Display Character
+            JC      dumpch2 ; Yes
+DUMPCH1:    MVI     a,'.' ; Non-Printable Character
+DUMPCH2:    CALL    soutc ; Display Character
             DCR     b ; Display Another Character?
-            JNZ     dumpchar ; Yes
+            JNZ     dumpch ; Yes
             CALL    soutcrlf ; Display CRLF
-            SHLD    dumpb ; Save Dump Begin Address
+            SHLD    addrbeg ; Save Dump Begin Address
             XCHG     
-            LHLD    dumpe ; Get Dump End Address
+            LHLD    addrend ; Get Dump End Address
             CALL    cmphlde ; Dump End >= Dump Begin
             JNC     dumpnl ; Yes, Dump Next Line
             JMP     main ; No, Next Command
-ENTR:       JMP     main ; Next Command
-GOTO:       JMP     main ; Next Command
-
+; 
 ;*****
-;* Library
+;* Edit
+;* HL = Command Line Buffer
 ;*
+EDIT:       CALL    s2w ; Get Edit Address
+            JZ      error ; No Digits Found
+            XCHG     ; Save Edit Address
+            SHLD    addrbeg 
+EDITNL:     MOV     a,h ; Display Address High Byte
+            CALL    southexb 
+            MOV     a,l ; Display Address Low Byte
+            CALL    southexb 
+            MVI     a,' ' ; Display Space
+            CALL    soutc 
+            MOV     a,m ; Display Current Byte
+            CALL    southexb 
+            MVI     a,'-' ; Display Prompt
+            CALL    soutc 
+            LXI     h,clbuf ; Get SIO Command Line Buffer Pointer
+            LXI     b,2 ; Get SIO Command Line Buffer Size (Zeros B - Size in C)
+            CALL    sinstr ; Get SIO Command Line Buffer
+            CALL    s2w ; Get New Byte
+            JZ      editcmd ; No Digits Found
+            LHLD    addrbeg ; Get Edit Address
+            MOV     m,e ; Save New Byte
+EDITNL1:    LHLD    addrbeg ; Get Edit Address
+            INX     h 
+            SHLD    addrbeg 
+            JMP     editnl ; Get Next Edit
+EDITCMD:    LDA     clbuf ; Get Command Line Character
+            ORA     a ; No Change?
+            JZ      editnl1 ; Yes, No Change
+            CPI     '.' ; Exit?
+            JZ      main ; Yes, Next Command
+            CPI     '?' ; Help?
+            JZ      help ; Yes
+            LXI     h,clmsg ; Display Error Message
+            CALL    soutstr 
+            CALL    soutcrlf 
+            LHLD    addrbeg ; Get Edit Address
+            JMP     editnl1 ; Try Again
+; 
+;*****
+;* GoTo
+;* HL = Command Line Buffer
+;*
+GOTO:       CALL    s2w ; Get GoTo Address
+            JZ      error ; No Digits Found
+            PUSH    d ; Jump to GoTo Address
+            RET      
+; 
+;*****
+;= Library
+;=
             .ORG    $1800 
-
+; 
 ;=====
 ;= Serial Output Character in Acc
 ;= Modifies: None
@@ -184,8 +237,8 @@ SOUTC:      PUSH    psw ; Save Char
             JZ      soutc ; No, Keep Waiting
             POP     psw ; Restore Char
             OUT     siodata ; Output Char to SID Data Port
-SOUTCX:     RET      ; Done
-
+            RET      ; Done
+; 
 ;=====
 ;= Serial Output String at HL, Null terminated
 ;= Modifies: AF, HL
@@ -195,7 +248,7 @@ SOUTSTR:    MOV     a,m ; Get Char from Buffer
             CALL    soutc ; No, Serial Output Char
             INX     h ; Inc Buffer Pointer
             JMP     soutstr ; Get Next Char
-
+; 
 ;=====
 ;= Serial Output Hex Byte in Acc
 ;= Modifies AF
@@ -217,18 +270,21 @@ SOUTHEXB1:  CALL    soutc ; Serial Output Char
             JC      southexb2 ; No
             ADI     'A'-':' ; Yes
 SOUTHEXB2:  JMP     soutc ; Serial Output Char
-
+; 
 ;=====
 ;= Serial Input String at HL, B=Count, C=Length
-;= Set B to 0 when calling
+;= Before calling, set B to 0 when setting C to Length
 ;= Modifies AF, BC, DE, HL
 SINSTR:     PUSH    h ; Save Registers
             PUSH    b 
+            MVI     a,siocmdi+siocmdrxen ; Set SIO RX Enable
+            OUT     siocmd 
 SINSTRCB:   MVI     m,0 ; Clear Buffer
             DCR     c 
             JNZ     sinstrcb 
-            POP     b ; Restore Registers
-            POP     h 
+            POP     b ; Restore B=Count, C=Length
+            POP     h ; Restore Buffer Pointer
+            PUSH    h ; Save Buffer Pointer
 SINSTRGC:   CALL    sinc ; Get Character
             MOV     d,a ; Save Character
             CPI     cr ; Carriage Return?
@@ -236,28 +292,31 @@ SINSTRGC:   CALL    sinc ; Get Character
             CPI     bs ; Backspace?
             JZ      sinstrbs ; Yes, Backspace
             CPI     ' ' ; Printable Character?
-            JC      sinstr ; No, Ignore Character
+            JC      sinstrgc ; No, Ignore Character
             MOV     a,b ; Character Counter = Buffer Size?
             CMP     c 
-            JZ      sinstr ; Yes, Ignore Character
+            JZ      sinstrgc ; Yes, Ignore Character
             MOV     a,d ; Restore Character
             MOV     m,a ; No, Save Character in Buffer
             INX     h ; Inc Buffer Pointer
             INR     b ; Inc Buffer Count
 SINSTRECHO: CALL    soutc ; Echo Character
-            JMP     sinstr ; Get Next Character
+            JMP     sinstrgc ; Get Next Character
 SINSTRBS:   MOV     a,b ; Count = 0?
             ORA     a 
             JZ      sinstr ; Yes, Ignore Backspace
             DCX     h ; Dec Buffer Pointer
             DCR     b ; Dec Character Count
             MVI     m,' ' ; Erase Character in Buffer
-            MOV     a,d ; Restore Character
-            JMP     sinstrecho ; Echo Character
+            MOV     a,d ; Restore Backspace Character
+            JMP     sinstrecho ; Echo Backspace Character
 SINSTRX:    MVI     m,nul ; Null Terminate Buffer
-            JMP     soutcrlf ; Send CRLF
-
-
+            CALL    soutcrlf ; Send CRLF
+            MVI     a,siocmdi ; Clear SIO RX Enable
+            OUT     siocmd 
+            POP     h ; Restore Buffer Pointer
+            JMP     str2upr ; Convert to Upper Case
+; 
 ;=====
 ;= Serial Input Character to Acc
 ;= Modifies AF
@@ -267,7 +326,7 @@ SINC:       IN      siost ; Character Ready?
             IN      siodata ; Input Character
             ANI     $7F ; Make 7-bit ASCII
             RET      
-
+; 
 ;=====
 ;= String at HL to Upper Case
 ;= Modifies AF
@@ -286,7 +345,7 @@ STR2UPR1:   INX     h ; Inc Pointer
             JMP     str2uprn ; Check Next Character
 STR2UPRX:   POP     h ; Restore String Pointer
             RET      
-
+; 
 ;=====
 ;= Parse Word to DE from String at HL
 ;= Returns HL Pointing to Next Non-Digit Character
@@ -297,18 +356,19 @@ S2W:        LXI     d,0 ; Clear Word
 S2WNC:      MOV     a,m ; Get Character
             ORA     a ; Character = Nul?
             JZ      s2wx ; Yes, Exit
-            SUI     '0' ; Character = Digit?
-            JC      s2wdl ; No, Process Delimeter
-            CPI     10 
-            JC      s2wdg ; Yes, Process Digit
-            SUI     'A'-'9'-1 
-            JC      s2wdl ; No, Process Delimeter
+            SUI     '0' ; Character < 0?
+            JC      s2wdel ; Yes, Process Delimeter
+            CPI     9+1 ; Character <= 9?
+            JC      s2wdig ; Yes, Process Digit
+            CPI     'A'-'0' ; Character < A?
+            JC      s2wdel ; Yes, Process Delimeter
+            SUI     'A'-'9'-1 ; Character <= F?
             CPI     16 
-            JNC     s2wdl ; Yes, Process Delimeter
-S2WDG:      MVI     c,-1 ; Set Digit Found Flag
+            JNC     s2wdel ; No, Process Delimeter
+S2WDIG:     MVI     c,-1 ; Set Digit Found Flag
             PUSH    psw ; Save Digit
             MVI     b,4 ; Shift DE Left 4 Bits
-S2WDG1:     ORA     a ; Clear Carry
+S2WDIG1:    ORA     a ; Clear Carry
             MOV     a,e 
             RAL      
             MOV     e,a 
@@ -316,19 +376,19 @@ S2WDG1:     ORA     a ; Clear Carry
             RAL      
             MOV     d,a 
             DCR     b ; Again?
-            JNZ     s2wdg1 ; Yes
+            JNZ     s2wdig1 ; Yes
             POP     psw ; Restore Digit
             ORA     e ; Save Digit
             MOV     e,a 
 S2WINC:     INX     h ; Inc String Pointer
             JMP     s2wnc ; Process Next Character
-S2WDL:      MOV     a,c ; Digit Found?
+S2WDEL:     MOV     a,c ; Digit Found?
             ORA     a 
             JZ      s2winc ; No, Keep Looking
 S2WX:       MOV     a,c ; Set Z to Digit Found Flag
             ORA     a 
             RET      
-
+; 
 ;=====
 ;* Serial Output CRLF
 ;* Modifies AF
@@ -336,7 +396,7 @@ SOUTCRLF:   MVI     A,cr ; Display CR
             CALL    SOUTC 
             MVI     a,lf ; Display LF
             JMP     soutc 
-
+; 
 ;=====
 ;* Compare HL to DE
 ;* Modifies AF
@@ -345,7 +405,7 @@ CMPHLDE:    MOV     a,l ; Subtract DE from HL
             MOV     a,h 
             SBB     d 
             RET      
-
+; 
 ;*****
 ;* String Constants
 ;*
@@ -357,23 +417,22 @@ GRTMSG:     DB      cr,lf,lf,'GERmon v1.0',bel
             DB      nul 
 CLMSG:      DB      '? ' 
             DB      nul 
-ERRMSG:     DB      'Error',cr,lf 
+ERRMSG:     DB      'Error  (? for HELP)',cr,lf 
             DB      nul 
 HLPMSG:     DB      cr,lf 
             DB      'Commands',cr,lf 
             DB      '========',cr,lf 
-            DB      'D bbbb eeee <enter>  ' 
-            DB      'Display Memory',cr,lf 
-            DB      'E aaaa <enter>       ' 
-            DB      'Edit Memory',cr,lf 
-            DB      'G aaaa <enter>       ' 
-            DB      'Execute (GoTo) Memory',cr,lf 
+            DB      'D bbbb eeee <enter>  Display Memory',cr,lf 
+            DB      'E aaaa <enter>       Edit Memory',cr,lf 
+            DB      '                     <enter> No Change',cr,lf 
+            DB      '                     <.> Exit',cr,lf 
+            DB      'G aaaa <enter>       GoTo (Execute) Memory',cr,lf 
             DB      nul 
 DUMPHD:     DB      '     00 01 02 03 04 05 06 07 08 ' 
             DB      '09 0A 0B 0C 0D 0E 0F ' 
             DB      '0123456789ABCDEF',cr,lf 
             DB      nul 
-
+; 
 ;*****
 ;* RAM
 ;*
@@ -381,10 +440,9 @@ DUMPHD:     DB      '     00 01 02 03 04 05 06 07 08 '
 
 CLBUF:      DS      12 ; Command Line Buffer (String - Null Delimited)
 CLBUFE:     DB      0 ; Command Line Buffer End and Space for Null Delimeter
-CLBUFPTR:   DW      0 ; Command Line Buffer Pointer
-DUMPB:      DW      0 ; Dump Address Begin
-DUMPE:      DW      0 ; Dump Address End
-
+ADDRBEG:    DW      0 ; Address Begin
+ADDREND:    DW      0 ; Address End
+; 
 ;*****
 ;* STACK
 ;*
@@ -392,6 +450,35 @@ DUMPE:      DW      0 ; Dump Address End
 
             DS      100h 
 SPINIT      EQU     $ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
